@@ -1,0 +1,48 @@
+Our grid is composed of electrodes spaced at 50cm.
+
+--------------------------------------------------------------
+Long ---------------------------------------------------------
+
+Our standard mapping will be
+
+    01  -  02  -  03  -  04  -  05
+   
+ 06  -  07  -  08 -  09  -  10  -  11
+
+    12  -  13  -  14  -  15  -  16
+-----bank-----bank-----bank-----bank-----
+
+
+
+Our January 2026 LONG hardware mapping (from the wavefile) is:
+
+    14  -  15  -  12  -  13  -  10
+
+ 08  -  09  -  04 -  05  -  06  -  11
+
+    02  -  03  -  00  -  01  -  07
+-----------------BOX-------------------
+
+The position of the BOX was usually on the BANK, but not always.
+For every dataset, we will have a mapping function.
+
+--------------------------------------------------------------
+Vertical -----------------------------------------------------
+
+   01 - 02   |  05 - 06  |  09 - 10  |  13 - 14
+   *    *    |  *    *   |  *    *   |  *    *
+   03 - 04   |  07 - 08  |  11 - 12  |  15 - 16
+
+Our January 2026 VERTICAL hardware mapping (from the wavefile) is:
+
+B   00 - 01   |  04 - 05  |  08 - 09  |  12 - 13
+O   *    *    |  *    *   |  *    *   |  *    *
+X   02 - 03   |  06 - 07  |  10 - 11  |  14 - 15
+
+
+Rotation of the vertical grid with respect to BANK is a bit problematic. This
+can always be recovered from the photos via the position of the BOX. This grid 
+is about Z position (depth) rather than XY position.
+
+--------------------------------------------------------------
+Compact 
