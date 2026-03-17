@@ -3,16 +3,16 @@ function [pf, wtims] = findEigenfreqs(data, Fs)
 % (data) and traces the EOD frequencies in the sample. pf is the list of
 % EOD frequencies for each fish.  wtims is the time stamps for the middle
 % of each FFT window used for estimating the EOD frequencies.
-% Sadly, this script requires too much user clicking - to get the initial
-% EOD frequencies and to correct errors.
+% Initial EOD frequencies and the starting window are detected automatically.
 % Frequencies are reported at the middle of the time window over which the
 % long FFT was taken.
-% This function has two embedded functions, fftMaker and getpeaks.
-% fftMaker calculates the power spectrum of a sample.
-% getpeaks uses fftMaker to choose 'new' peak frequencies based on previous peaks.
+% Embedded functions: fftMaker, getpeaks, removeHarmonics.
+% fftMaker computes the power spectrum of a snippet.
+% getpeaks finds updated peak frequencies near a set of prior frequencies.
+% removeHarmonics discards peaks that are integer multiples of a lower peak.
 
 %% User changeable settings
-freqRange = [250 700];           % Frequency range for Eigenmannia
+freqRange = [250 650];           % Frequency range for Eigenmannia
 nFFT = 16*1024;                  % Large FFT window for precise freq estimation
 stepsize = ceil(nFFT * 0.05);    % value of 0.05 is 95% overlap
 
@@ -24,40 +24,95 @@ tim = 1/Fs:1/Fs:length(data)/Fs;
 % the fish will be calculated. wtims are the actual times, widxs are the
 % indicies from tim.
 wtims = tim(1+(nFFT/2):stepsize:(length(data)-(nFFT/2))-1);
-% This loop is slow - there has to be a better way!  
-%    for j=length(wtims):-1:1
-%        widxs(j) = find(tim == wtims(j));
-%    end
-    widxs = 1+(nFFT/2) : stepsize : (length(data)-(nFFT/2))-1;                                                    
+widxs = 1+(nFFT/2) : stepsize : (length(data)-(nFFT/2))-1;
 
-%% Interface with the user to get the initial frequencies
+%% Automatically detect fish count and find the best starting window
 
-% Get a single click of a clean section where all the fish can be
-% discriminated.
-figure(1); clf; specgram(data, nFFT/2, Fs, [], floor(0.80*(nFFT/2))); ylim(freqRange);
+% Get frequency axis (identical for every window since all windows are nFFT+1 samples)
+f0 = fftMaker(data(widxs(1)-(nFFT/2):widxs(1)+(nFFT/2)), Fs, 3);
+inRange    = f0.fftfreq >= freqRange(1) & f0.fftfreq <= freqRange(2);
+rangeFreqs = f0.fftfreq(inRange)';                     % column vector
+freqStep   = rangeFreqs(2) - rangeFreqs(1);
+minSepSamp = round(3 / freqStep);                      % 3 Hz minimum separation
 
-[startTim, userFreqs] = ginput();
+% --- Step 1: Estimate fish count from a median spectrum ---
+% Averaging over many windows suppresses transient events; the median is
+% more robust to the occasional frequency crossing or noise burst.
+scanIdxs = unique(round(linspace(1, length(wtims), min(50, length(wtims)))));
+specMat   = zeros(length(scanIdxs), length(rangeFreqs));
+for ki = 1:length(scanIdxs)
+    fk = fftMaker(data(widxs(scanIdxs(ki))-(nFFT/2):widxs(scanIdxs(ki))+(nFFT/2)), Fs, 3);
+    specMat(ki,:) = fk.fftdata(inRange);
+end
+medSpec = median(specMat, 1);
 
-startTim = mean(startTim);
+[~, locs] = findpeaks(medSpec, ...
+    'MinPeakProminence', 10 * median(medSpec), ...
+    'MinPeakDistance',   minSepSamp);
+candidateFreqs = rangeFreqs(locs);
 
-% The user may click at either end or in the middle. This handles that.
-if startTim < wtims(1)
-    startTim = wtims(1);
-    direction = 1;
-elseif startTim > wtims(end)
-    startTim = wtims(end);
-    direction = 2; 
-else
-    startTim = wtims(find(wtims >= startTim, 1));
-    direction = 3;
+% Remove harmonics: discard any peak within 3 Hz of an integer multiple
+% (2x–5x) of a lower-frequency peak. Fish at ~300 Hz produce a 2nd harmonic
+% at ~600 Hz that would otherwise be counted as a separate fish.
+candidateFreqs = removeHarmonics(candidateFreqs, 3);
+nFish = length(candidateFreqs);
+fprintf('Estimated %d fish (median-spectrum peaks: %s Hz)\n', ...
+    nFish, num2str(candidateFreqs', '%.1f '));
+
+% --- Step 2: Find the window with the most-separated peaks ---
+% Scan ~100 windows and keep the one where exactly nFish peaks are found
+% and the minimum pairwise gap between them is largest. This naturally
+% avoids frequency crossings, where two fish overlap and the gap collapses.
+scanIdxs2 = unique(round(linspace(1, length(wtims), min(100, length(wtims)))));
+bestSep   = 0;
+bestWidx  = round(length(wtims) / 2);     % fallback to middle
+for ki = 1:length(scanIdxs2)
+    k  = scanIdxs2(ki);
+    fk = fftMaker(data(widxs(k)-(nFFT/2):widxs(k)+(nFFT/2)), Fs, 3);
+    rData = fk.fftdata(inRange);
+    [~, locsK] = findpeaks(rData, ...
+        'MinPeakProminence', 10 * median(rData), ...
+        'MinPeakDistance',   minSepSamp);
+    peaksK = removeHarmonics(rangeFreqs(locsK), 3);
+    if length(peaksK) == nFish
+        minSep = min(diff(sort(peaksK)));
+        if minSep > bestSep
+            bestSep  = minSep;
+            bestWidx = k;
+        end
+    end
 end
 
-startWidx = find(wtims == startTim);
+startWidx = bestWidx;
+startTim  = wtims(startWidx);
+direction = 3;    % always trace both directions from the chosen window
 
-pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
+% Get the precise starting frequencies from the best window
+fBest  = fftMaker(data(widxs(startWidx)-(nFFT/2):widxs(startWidx)+(nFFT/2)), Fs, 3);
+rDataB = fBest.fftdata(inRange);
+[~, locsB] = findpeaks(rDataB, ...
+    'MinPeakProminence', 10 * median(rDataB), ...
+    'MinPeakDistance',   minSepSamp);
+userFreqs = removeHarmonics(rangeFreqs(locsB), 3);
 
-newFreqs1 = userFreqs; % Lazy coding - newFreqs1 gets updated for forward analysis.
-newFreqs2 = userFreqs; % Lazy stupid coding - newFreqs2 gets update for the backward analysis. Embarassing.
+fprintf('Starting at t = %.1f s  (min fish separation = %.1f Hz)\n', startTim, bestSep);
+
+% Show spectrogram with detected frequencies and start time marked
+figure(1); clf; specgram(data, nFFT/2, Fs, [], floor(0.80*(nFFT/2))); ylim(freqRange);
+hold on;
+for j = 1:length(userFreqs)
+    yline(userFreqs(j), 'r--', sprintf('%.1f Hz', userFreqs(j)), ...
+        'LabelVerticalAlignment', 'bottom');
+end
+xline(startTim, 'g-', sprintf('start (sep=%.1fHz)', bestSep), ...
+    'LabelVerticalAlignment', 'top');
+title(sprintf('Auto-detected %d fish, start t=%.1fs', nFish, startTim));
+drawnow;
+
+pf(1:length(userFreqs), length(wtims)) = zeros(1, length(userFreqs));
+
+newFreqs1 = userFreqs;
+newFreqs2 = userFreqs;
 
 %% Automated frequency tracking
 
@@ -83,9 +138,12 @@ if direction ~= 1
     end
 end
 
+% Crossover fixes only apply when there are 2+ fish.
+if nFish > 1
+
 % If EOD frequencies cross, it is inevitable that the tracking of two
 % "channels" will merge at the crossing point and stay together for the
-% rest of the sample. 
+% rest of the sample.
 
 % Fix #1 - see if our first sample has fewer unique EODs than expected.
 % What we do is see if there are too few EOD frequencies at the beginning 
@@ -154,14 +212,15 @@ if length(unique(pf(:,end))) < length(userFreqs)
 
 end
 
+end % nFish > 1
+
 %% Plot the result
 
 figure(1); clf; specgram(data, nFFT, Fs, [], floor(0.80*nFFT)); ylim(freqRange);
-colormap('HOT'); 
 hold on;
 for j=1:length(userFreqs)
 
-    plot(wtims, pf(j,:), '.', 'MarkerSize', 12);
+    plot(wtims, pf(j,:), '.', 'MarkerSize', 16);
 
 end
 
@@ -176,8 +235,31 @@ ylim([min(pf(1,:))-20, max(pf(end,:))+20]);
 
 end
 
-%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% 
- 
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+function freqs = removeHarmonics(freqs, tol)
+% Remove frequencies that are within tol Hz of an integer multiple (2x-5x)
+% of a lower-frequency candidate. Input/output are column vectors.
+    freqs = sort(freqs(:));
+    keep  = true(size(freqs));
+    for k = 1:length(freqs)
+        for m = 1:k-1
+            if keep(m)
+                for n = 2:5
+                    if abs(freqs(k) - n * freqs(m)) < tol
+                        keep(k) = false;
+                        break;
+                    end
+                end
+            end
+            if ~keep(k), break; end
+        end
+    end
+    freqs = freqs(keep);
+end
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
 function peakfreqs = getpeaks(snip, samplerate, prefreqs)
 
     m = fftMaker(snip, samplerate, 3);
