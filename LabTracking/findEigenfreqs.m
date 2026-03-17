@@ -1,4 +1,4 @@
-function [pf, wtims] = findEigenfreqs(data, Fs)
+function [pf, wtims] = findEigenfreqs(data, Fs, prefreqs)
 % Reads a single channel of Eigenmannia data recorded in a single tank
 % (data) and traces the EOD frequencies in the sample. pf is the list of
 % EOD frequencies for each fish.  wtims is the time stamps for the middle
@@ -36,23 +36,31 @@ wtims = tim(1+(nFFT/2):stepsize:(length(data)-(nFFT/2))-1);
 % discriminated.
 figure(1); clf; specgram(data, nFFT/2, Fs, [], floor(0.80*(nFFT/2))); ylim(freqRange);
 
-[startTim, userFreqs] = ginput();
+if isempty(prefreqs)
 
-startTim = mean(startTim);
+    [startTim, userFreqs] = ginput();
+    
+    startTim = mean(startTim);
+    
+    % The user may click at either end or in the middle. This handles that.
+    if startTim < wtims(1)
+        startTim = wtims(1);
+        direction = 1;
+    elseif startTim > wtims(end)
+        startTim = wtims(end);
+        direction = 2; 
+    else
+        startTim = wtims(find(wtims >= startTim, 1));
+        direction = 3;
+    end
+    
+    startWidx = find(wtims == startTim);
 
-% The user may click at either end or in the middle. This handles that.
-if startTim < wtims(1)
-    startTim = wtims(1);
-    direction = 1;
-elseif startTim > wtims(end)
-    startTim = wtims(end);
-    direction = 2; 
 else
-    startTim = wtims(find(wtims >= startTim, 1));
-    direction = 3;
+    userFreqs = prefreqs;
+    startWidx = 1;
+    direction = 1;
 end
-
-startWidx = find(wtims == startTim);
 
 pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
 
