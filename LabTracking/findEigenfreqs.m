@@ -32,8 +32,8 @@ wtims = tim(1+(nFFT/2):stepsize:(length(data)-(nFFT/2))-1);
 
 %% Interface with the user to get the initial frequencies
 
-% Get a single click of a clean section where all the fish can be
-% discriminated.
+% Get clicks for each Eigen frequency
+
 figure(1); clf; specgram(data, nFFT/2, Fs, [], floor(0.80*(nFFT/2))); ylim(freqRange);
 
 if isempty(prefreqs)
@@ -60,6 +60,15 @@ else
     userFreqs = prefreqs;
     startWidx = 1;
     direction = 1;
+
+    for j = 1:length(prefreqs)
+        figure(1); hold on; plot([0, 0.5], [prefreqs(j), prefreqs(j)]);
+    end
+
+    if length(prefreqs) > 1
+        % Ask if we should reclick
+
+    end
 end
 
 pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
@@ -72,7 +81,7 @@ newFreqs2 = userFreqs; % Lazy stupid coding - newFreqs2 gets update for the back
 % Go forward young computer - forwards in time from where the user specified the EOD frequencies
 if direction ~= 2
     for j = startWidx:length(wtims)
-        
+
        curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);    % This is the indicies for the window of data to analyze
        pf(:,j) = getpeaks(data(curWindowIDX), Fs, newFreqs1); % Get the current peaks based on previous peaks
        newFreqs1 = pf(:,j);                                   % Assign the values to the our data out.
@@ -117,8 +126,9 @@ if length(unique(pf(:,1))) < length(userFreqs)
     ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
 
     figure(2); clf; plot(ff.freqs, ff.data, 'k'); 
+    hold on; text(freqRange(1)+20,0, num2str(length(userFreqs)), 'FontSize', 24);
 
-    [userNewFreqs, ~] = ginput();
+    [userNewFreqs, ~] = ginput(length(userFreqs));
 
     for j=curIDX
         curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
@@ -151,8 +161,9 @@ if length(unique(pf(:,end))) < length(userFreqs)
     ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
 
     figure(2); clf; plot(ff.freqs, ff.data, 'k'); 
-
-    [userNewFreqs, ~] = ginput();
+    hold on; text(freqRange(1)+20,0, num2str(length(userFreqs)), 'FontSize', 24);
+ 
+    [userNewFreqs, ~] = ginput(length(userFreqs));
 
     for j=rucIDX
            curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
