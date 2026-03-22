@@ -12,8 +12,8 @@ function [pf, wtims] = findEigenfreqs(data, Fs, prefreqs)
 % getpeaks uses fftMaker to choose 'new' peak frequencies based on previous peaks.
 
 %% User changeable settings
-freqRange = [250 700];           % Frequency range for Eigenmannia
-nFFT = 16*1024;                  % Large FFT window for precise freq estimation
+freqRange = [250 550];           % Frequency range for Eigenmannia
+nFFT = 32*1024;                  % Large FFT window for precise freq estimation
 stepsize = ceil(nFFT * 0.05);    % value of 0.05 is 95% overlap
 
 %% Pre calculations
