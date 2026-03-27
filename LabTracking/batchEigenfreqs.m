@@ -55,12 +55,12 @@ for iFile = 1:nFiles
     % Determine channel count from the first file
     if iFile == 1
         nTanks = length(data(1,:));
-        fprintf('Detected %d channel(s).\n', nTanks);
+        fprintf('Detected %d Tank(s).\n', nTanks);
         prefreqs = cell(nTanks, 1);   % all empty => user clicks on file 1
     end
 
     % Storage for this file's results
-    chanResults(nTanks) = struct('name', [], 'pf', [], 'wtims', []);
+    chanResults(nTanks) = struct('name', [], 'pf', [], 'pa', [], 'wtims', []);
 
     for iChan = 1:nTanks
         chanName = tankNames{iChan};
@@ -68,10 +68,11 @@ for iFile = 1:nFiles
 
         chanData = data(:, iChan);
 
-        [pf, wtims] = findEigenfreqs(chanData, Fs, prefreqs{iChan});
+        [pf, pa, wtims] = findEigenfreqs(chanData, Fs, prefreqs{iChan});
 
         chanResults(iChan).name  = chanName;
         chanResults(iChan).pf    = pf;
+        chanResults(iChan).pa    = pa;
         chanResults(iChan).wtims = wtims;
 
         % Mean frequency of each fish across the file -> prefreqs for next file
@@ -81,7 +82,7 @@ for iFile = 1:nFiles
 
     r(iFile).filename  = fileList(iFile).name;
     r(iFile).startTime = startTime;
-    r(iFile).channels  = chanResults;
+    r(iFile).tankID  = chanResults;
 
     fprintf('  Done with %s.\n\n', fileList(iFile).name);
 end

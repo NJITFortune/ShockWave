@@ -1,4 +1,4 @@
-function [pf, wtims] = findEigenfreqs(data, Fs, prefreqs)
+function [pf, pa, wtims] = findEigenfreqs(data, Fs, prefreqs)
 % Reads a single channel of Eigenmannia data recorded in a single tank
 % (data) and traces the EOD frequencies in the sample. pf is the list of
 % EOD frequencies for each fish.  wtims is the time stamps for the middle
@@ -72,6 +72,7 @@ else
 end
 
 pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
+pa(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
 
 newFreqs1 = userFreqs; % Lazy coding - newFreqs1 gets updated for forward analysis.
 newFreqs2 = userFreqs; % Lazy stupid coding - newFreqs2 gets update for the backward analysis. Embarassing.
@@ -83,7 +84,7 @@ if direction ~= 2
     for j = startWidx:length(wtims)
 
        curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);    % This is the indicies for the window of data to analyze
-       pf(:,j) = getpeaks(data(curWindowIDX), Fs, newFreqs1); % Get the current peaks based on previous peaks
+       [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, newFreqs1); % Get the current peaks based on previous peaks
        newFreqs1 = pf(:,j);                                   % Assign the values to the our data out.
 
     end
@@ -94,7 +95,7 @@ if direction ~= 1
     for j = startWidx:-1:1
         
        curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
-       pf(:,j) = getpeaks(data(curWindowIDX), Fs, newFreqs2);
+       [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, newFreqs2);
        newFreqs2 = pf(:,j);
 
     end
@@ -132,7 +133,7 @@ if length(unique(pf(:,1))) < length(userFreqs)
 
     for j=curIDX
         curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
-        pf(:,j) = getpeaks(data(curWindowIDX), Fs, userNewFreqs);
+        [pf(:,j), pa(:,j)]= getpeaks(data(curWindowIDX), Fs, userNewFreqs);
         userNewFreqs = pf(:,j);
     end
 
@@ -167,7 +168,7 @@ if length(unique(pf(:,end))) < length(userFreqs)
 
     for j=rucIDX
            curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
-           pf(:,j) = getpeaks(data(curWindowIDX), Fs, userNewFreqs);
+           [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, userNewFreqs);
            userNewFreqs = pf(:,j);
     end
 
@@ -197,13 +198,13 @@ end
 
 %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% 
  
-function peakfreqs = getpeaks(snip, samplerate, prefreqs)
+function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
 
     m = fftMaker(snip, samplerate, 3);
 
     for j=length(prefreqs):-1:1
         freqfreqIDX = find(m.fftfreq > prefreqs(j)-1 & m.fftfreq < prefreqs(j)+1);
-        [~,mIDX] = max(m.fftdata(freqfreqIDX));
+        [peakamps(j), mIDX] = max(m.fftdata(freqfreqIDX));
         peakfreqs(j) = m.fftfreq(freqfreqIDX(mIDX));
     end
 
