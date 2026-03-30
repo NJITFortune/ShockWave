@@ -115,21 +115,27 @@ keepGoingWhileOne = 1; % Again, I am terrible at coding.
 if length(unique(pf(:,1))) < length(userFreqs)
 
     curIDX(1) = keepGoingWhileOne;
-    while keepGoingWhileOne == 1
+    while keepGoingWhileOne == 1 && curIDX(end) <= length(wtims)
         if length(unique(pf(:,curIDX(end)))) == length(userFreqs)
             keepGoingWhileOne = 2;
         end
         curIDX(end+1) = curIDX(end) + 1;
     end
+    curIDX = curIDX(curIDX <= length(wtims));
 
-    f = fftMaker(data(widxs(1)-(nFFT/2):widxs(1)+(nFFT/2)), Fs, 3);
-    ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
-    ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
+    if isempty(prefreqs)
+        f = fftMaker(data(widxs(1)-(nFFT/2):widxs(1)+(nFFT/2)), Fs, 3);
+        ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
+        ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
 
-    figure(2); clf; plot(ff.freqs, ff.data, 'k'); 
-    hold on; text(freqRange(1)+20,0, num2str(length(userFreqs)), 'FontSize', 24);
+        figure(2); clf; plot(ff.freqs, ff.data, 'k');
+        hold on; text(freqRange(1)+40,0, [num2str(length(userFreqs)), ' Start'], 'FontSize', 24);
 
-    [userNewFreqs, ~] = ginput(length(userFreqs));
+        [userNewFreqs, ~] = ginput(length(userFreqs));
+    else
+        fprintf('    Fix #1 (start): using prefreqs as seed (no clicks needed).\n');
+        userNewFreqs = userFreqs;
+    end
 
     for j=curIDX
         curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
@@ -150,21 +156,27 @@ if length(unique(pf(:,end))) < length(userFreqs)
 
     rucIDX(1) = keepGoingWhileEndLen;
 
-    while keepGoingWhileEndLen == length(wtims)
+    while keepGoingWhileEndLen == length(wtims) && rucIDX(end) >= 1
         if length(unique(pf(:,rucIDX(end)))) == length(userFreqs)
             keepGoingWhileEndLen = 2;
         end
         rucIDX(end+1) = rucIDX(end) - 1;
     end
+    rucIDX = rucIDX(rucIDX >= 1);
 
-    f = fftMaker(data(widxs(end)-(nFFT/2):widxs(end)+(nFFT/2)), Fs, 3);
-    ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
-    ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
+    if isempty(prefreqs)
+        f = fftMaker(data(widxs(end)-(nFFT/2):widxs(end)+(nFFT/2)), Fs, 3);
+        ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
+        ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
 
-    figure(2); clf; plot(ff.freqs, ff.data, 'k'); 
-    hold on; text(freqRange(1)+20,0, num2str(length(userFreqs)), 'FontSize', 24);
- 
-    [userNewFreqs, ~] = ginput(length(userFreqs));
+        figure(2); clf; plot(ff.freqs, ff.data, 'k');
+        hold on; text(freqRange(1)+20,0, [num2str(length(userFreqs)), ' End'], 'FontSize', 24);
+
+        [userNewFreqs, ~] = ginput(length(userFreqs));
+    else
+        fprintf('    Fix #2 (end): using prefreqs as seed (no clicks needed).\n');
+        userNewFreqs = userFreqs;
+    end
 
     for j=rucIDX
            curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
@@ -191,9 +203,6 @@ ylim([min(pf(1,:))-20, max(pf(end,:))+20]);
 % of the recording.  Here the user clicks the location, then the EOD frequencies,
 % and the code retraces.  Then we have to align the indices. 
 
-
-
-
 end
 
 %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% 
@@ -203,9 +212,27 @@ function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
     m = fftMaker(snip, samplerate, 3);
 
     for j=length(prefreqs):-1:1
-        freqfreqIDX = find(m.fftfreq > prefreqs(j)-1 & m.fftfreq < prefreqs(j)+1);
-        [peakamps(j), mIDX] = max(m.fftdata(freqfreqIDX));
-        peakfreqs(j) = m.fftfreq(freqfreqIDX(mIDX));
+
+        % Fundamental: search ±1 Hz around previous estimate
+        f1idx = m.fftfreq > prefreqs(j)-1 & m.fftfreq < prefreqs(j)+1;
+        [a1, i1] = max(m.fftdata(f1idx));
+        f1freqs = m.fftfreq(f1idx);
+        f1 = f1freqs(i1);
+
+        % 1st harmonic: search ±2 Hz around 2x previous estimate (window
+        % doubled because absolute drift is twice as large at the harmonic)
+        h1idx = m.fftfreq > 2*prefreqs(j)-2 & m.fftfreq < 2*prefreqs(j)+2;
+        if any(h1idx)
+            [a2, i2] = max(m.fftdata(h1idx));
+            h1freqs = m.fftfreq(h1idx);
+            f2 = h1freqs(i2) / 2;   % convert harmonic peak back to fundamental
+            peakfreqs(j) = (f1*a1 + f2*a2) / (a1 + a2);  % amplitude-weighted mean
+        else
+            peakfreqs(j) = f1;       % harmonic out of range, use fundamental only
+        end
+
+        peakamps(j) = a1;            % report fundamental amplitude
+
     end
 
 end

@@ -38,7 +38,8 @@ fprintf('Found %d .mat file(s) in %s\n\n', nFiles, dirPath);
 %% Process files
 r = struct('filename', cell(nFiles,1), 'startTime', cell(nFiles,1), 'channels', cell(nFiles,1));
 prefreqs = {};   % prefreqs{iChan} holds the mean freqs from the previous file
-nTanks = [];  % determined from the first file
+nTanks = [];     % determined from the first file
+nFishPerChan = [];  % expected fish count per channel, set from user clicks on file 1
 
 for iFile = 1:nFiles
 
@@ -57,6 +58,7 @@ for iFile = 1:nFiles
         nTanks = length(data(1,:));
         fprintf('Detected %d Tank(s).\n', nTanks);
         prefreqs = cell(nTanks, 1);   % all empty => user clicks on file 1
+        nFishPerChan = zeros(nTanks, 1);
     end
 
     % Storage for this file's results
@@ -75,8 +77,22 @@ for iFile = 1:nFiles
         chanResults(iChan).pa    = pa;
         chanResults(iChan).wtims = wtims;
 
-        % Mean frequency of each fish across the file -> prefreqs for next file
-        prefreqs{iChan} = mean(pf, 2);
+        % Record expected fish count from file 1 (set by user clicks)
+        if iFile == 1
+            nFishPerChan(iChan) = size(pf, 1);
+        end
+
+        % Mean frequency of each fish across the file -> prefreqs for next file.
+        % If the number of unique mean frequencies doesn't match the expected
+        % fish count, clear prefreqs so the user must reclick for the next file.
+        nextPrefreqs = mean(pf, 2);
+        if length(unique(nextPrefreqs)) == nFishPerChan(iChan)
+            prefreqs{iChan} = nextPrefreqs;
+        else
+            fprintf('    WARNING: %d unique freq(s) found but %d expected for %s. User must reclick next file.\n', ...
+                length(unique(nextPrefreqs)), nFishPerChan(iChan), chanName);
+            prefreqs{iChan} = [];
+        end
         
     end
 
@@ -84,7 +100,10 @@ for iFile = 1:nFiles
     r(iFile).startTime = startTime;
     r(iFile).tankID  = chanResults;
 
-    fprintf('  Done with %s.\n\n', fileList(iFile).name);
+    % Save after each file so progress is not lost on interruption
+    savePath = fullfile(dirPath, 'batchEigenfreqs_results.mat');
+    save(savePath, 'r');
+    fprintf('  Done with %s. Results saved to %s.\n\n', fileList(iFile).name, savePath);
 end
 
 fprintf('Batch complete.  Processed %d file(s), %d channel(s) each.\n', nFiles, nTanks);
