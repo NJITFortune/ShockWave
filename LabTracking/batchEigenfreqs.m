@@ -83,14 +83,15 @@ for iFile = 1:nFiles
         end
 
         % Mean frequency of each fish across the file -> prefreqs for next file.
-        % If the number of unique mean frequencies doesn't match the expected
-        % fish count, clear prefreqs so the user must reclick for the next file.
+        % If any single time window has fewer unique frequencies than expected,
+        % clear prefreqs so the user must reclick for the next file.
         nextPrefreqs = mean(pf, 2);
-        if length(unique(nextPrefreqs)) == nFishPerChan(iChan)
+        minUnique = min(arrayfun(@(j) length(unique(pf(:,j))), 1:size(pf,2)));
+        if minUnique == nFishPerChan(iChan)
             prefreqs{iChan} = nextPrefreqs;
         else
-            fprintf('    WARNING: %d unique freq(s) found but %d expected for %s. User must reclick next file.\n', ...
-                length(unique(nextPrefreqs)), nFishPerChan(iChan), chanName);
+            fprintf('    WARNING: frequency merge detected in %s (min unique per window: %d, expected %d). User must reclick next file.\n', ...
+                chanName, minUnique, nFishPerChan(iChan));
             prefreqs{iChan} = [];
         end
         
