@@ -210,6 +210,7 @@ end
 function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
 
     m = fftMaker(snip, samplerate, 3);
+    m.fftdata = diff(m.fftdata); m.fftdata(end+1) = m.fftdata(end);        %%% DIFF version
     frango = 1;
     
     for j=length(prefreqs):-1:1
@@ -219,8 +220,7 @@ function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
 
         % [a1, i1] = max(m.fftdata(f1idx));
 
-    m.fftdata = diff(m.fftdata); m.fftdata(end+1) = m.fftdata(end);        
-    [a1, i1] = min(m.fftdata(f1idx));
+    [a1, i1] = min(m.fftdata(f1idx));   %%% DIFF version
 
         f1freqs = m.fftfreq(f1idx);
         f1 = f1freqs(i1);
@@ -232,7 +232,7 @@ function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
         if any(h1idx)
            % [a2, i2] = max(m.fftdata(h1idx));
 
-     [a2, i2] = min(m.fftdata(h1idx));
+     [a2, i2] = min(m.fftdata(h1idx));  %%% DIFF version
      
             a2 = a2 * 2; % Doubling the amplitude of the harmonic to make it carry more weight.
 
