@@ -12,7 +12,7 @@ function [pf, pa, wtims] = findEigenfreqs(data, Fs, prefreqs)
 % getpeaks uses fftMaker to choose 'new' peak frequencies based on previous peaks.
 
 %% User changeable settings
-freqRange = [250 550];           % Frequency range for Eigenmannia
+freqRange = [200 600];           % Frequency range for Eigenmannia
 nFFT = 32*1024;                  % Large FFT window for precise freq estimation
 stepsize = ceil(nFFT * 0.05);    % value of 0.05 is 95% overlap
 
@@ -129,7 +129,7 @@ if length(unique(pf(:,1))) < length(userFreqs)
         ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
 
         figure(2); clf; plot(ff.freqs, ff.data, 'k');
-        hold on; text(freqRange(1)+40,0, [num2str(length(userFreqs)), ' Start'], 'FontSize', 24);
+        hold on; text(freqRange(1)+40,300, [num2str(length(userFreqs)), ' Start'], 'FontSize', 24);
 
         [userNewFreqs, ~] = ginput(length(userFreqs));
     else
@@ -210,20 +210,32 @@ end
 function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
 
     m = fftMaker(snip, samplerate, 3);
-
+    frango = 1;
+    
     for j=length(prefreqs):-1:1
 
         % Fundamental: search ±1 Hz around previous estimate
-        f1idx = m.fftfreq > prefreqs(j)-1 & m.fftfreq < prefreqs(j)+1;
-        [a1, i1] = max(m.fftdata(f1idx));
+        f1idx = m.fftfreq > prefreqs(j)-frango & m.fftfreq < prefreqs(j)+frango;
+
+        % [a1, i1] = max(m.fftdata(f1idx));
+
+    m.fftdata = diff(m.fftdata); m.fftdata(end+1) = m.fftdata(end);        
+    [a1, i1] = min(m.fftdata(f1idx));
+
         f1freqs = m.fftfreq(f1idx);
         f1 = f1freqs(i1);
 
         % 1st harmonic: search ±2 Hz around 2x previous estimate (window
         % doubled because absolute drift is twice as large at the harmonic)
-        h1idx = m.fftfreq > 2*prefreqs(j)-2 & m.fftfreq < 2*prefreqs(j)+2;
+        h1idx = m.fftfreq > 2*prefreqs(j) - (2*frango) & m.fftfreq < 2*prefreqs(j) + (2*frango);
+
         if any(h1idx)
-            [a2, i2] = max(m.fftdata(h1idx));
+           % [a2, i2] = max(m.fftdata(h1idx));
+
+     [a2, i2] = min(m.fftdata(h1idx));
+     
+            a2 = a2 * 2; % Doubling the amplitude of the harmonic to make it carry more weight.
+
             h1freqs = m.fftfreq(h1idx);
             f2 = h1freqs(i2) / 2;   % convert harmonic peak back to fundamental
             peakfreqs(j) = (f1*a1 + f2*a2) / (a1 + a2);  % amplitude-weighted mean
