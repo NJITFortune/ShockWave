@@ -12,8 +12,8 @@ function [pf, pa, wtims] = findEigenfreqs(data, Fs, prefreqs)
 % getpeaks uses fftMaker to choose 'new' peak frequencies based on previous peaks.
 
 %% User changeable settings
-freqRange = [200 600];           % Frequency range for Eigenmannia
-nFFT = 32*1024;                  % Large FFT window for precise freq estimation
+freqRange = [200 650];           % Frequency range for Eigenmannia
+nFFT = 16*1024;                  % Large FFT window for precise freq estimation
 stepsize = ceil(nFFT * 0.05);    % value of 0.05 is 95% overlap
 
 %% Pre calculations
@@ -23,12 +23,8 @@ tim = 1/Fs:1/Fs:length(data)/Fs;
 % These are the centers of the time windows for which the frequencies of
 % the fish will be calculated. wtims are the actual times, widxs are the
 % indicies from tim.
-wtims = tim(1+(nFFT/2):stepsize:(length(data)-(nFFT/2))-1);
-% This loop is slow - there has to be a better way!  
-%    for j=length(wtims):-1:1
-%        widxs(j) = find(tim == wtims(j));
-%    end
-    widxs = 1+(nFFT/2) : stepsize : (length(data)-(nFFT/2))-1;                                                    
+widxs = 1+(nFFT/2) : stepsize : (length(data)-(nFFT/2))-1;                                                    
+wtims = tim(widxs);
 
 %% Interface with the user to get the initial frequencies
 
@@ -36,7 +32,7 @@ wtims = tim(1+(nFFT/2):stepsize:(length(data)-(nFFT/2))-1);
 
 figure(1); clf; specgram(data, nFFT/2, Fs, [], floor(0.80*(nFFT/2))); ylim(freqRange);
 
-if isempty(prefreqs)
+if isempty(prefreqs) % This is a initial round - user must click
 
     [startTim, userFreqs] = ginput();
     
@@ -56,51 +52,52 @@ if isempty(prefreqs)
     
     startWidx = find(wtims == startTim);
 
-else
+else  % This is a subsequent round - user clicked already and using old frequencies 
+
     userFreqs = prefreqs;
-    startWidx = 1;
-    direction = 1;
+    startWidx = 1; % If using old frequencies, we start at the beginning
+    direction = 1; % And therefore we go forward in time...
 
-    for j = 1:length(prefreqs)
-        figure(1); hold on; plot([0, 0.5], [prefreqs(j), prefreqs(j)]);
-    end
-
-    if length(prefreqs) > 1
-        % Ask if we should reclick
-
-    end
+    % for j = 1:length(prefreqs)
+    %     figure(1); hold on; plot([0, 0.5], [prefreqs(j), prefreqs(j)]);
+    % end
+    % 
+    % if length(prefreqs) > 1
+    %     % Ask if we should reclick
+    % 
+    % end
+    
 end
 
-pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
-pa(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
+% Prefill the structure for speed - we know how many we will have
+    pf(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
+    pa(1:length(userFreqs),length(wtims)) = zeros(1,length(userFreqs));
 
-newFreqs1 = userFreqs; % Lazy coding - newFreqs1 gets updated for forward analysis.
-newFreqs2 = userFreqs; % Lazy stupid coding - newFreqs2 gets update for the backward analysis. Embarassing.
+% These are variables that get replaced on each cycle. There has got to be a better way.    
+    newFreqs1 = userFreqs; % Lazy coding - newFreqs1 gets updated for forward analysis.
+    newFreqs2 = userFreqs; % Lazy stupid coding - newFreqs2 gets update for the backward analysis. Embarassing.
 
 %% Automated frequency tracking
 
 % Go forward young computer - forwards in time from where the user specified the EOD frequencies
 if direction ~= 2
     for j = startWidx:length(wtims)
-
        curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);    % This is the indicies for the window of data to analyze
        [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, newFreqs1); % Get the current peaks based on previous peaks
        newFreqs1 = pf(:,j);                                   % Assign the values to the our data out.
-
     end
 end
 
 % Go backward young computer - now go backwards in time from where the user specified the EOD frequencies.
 if direction ~= 1
     for j = startWidx:-1:1
-        
        curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
        [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, newFreqs2);
        newFreqs2 = pf(:,j);
-
     end
 end
 
+%% Fixing frequencies
 % If EOD frequencies cross, it is inevitable that the tracking of two
 % "channels" will merge at the crossing point and stay together for the
 % rest of the sample. 
@@ -121,15 +118,17 @@ if length(unique(pf(:,1))) < length(userFreqs)
         end
         curIDX(end+1) = curIDX(end) + 1;
     end
+
     curIDX = curIDX(curIDX <= length(wtims));
 
+    % Do we need clicks from the user or not?
     if isempty(prefreqs)
         f = fftMaker(data(widxs(1)-(nFFT/2):widxs(1)+(nFFT/2)), Fs, 3);
-        ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
-        ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
+        ff.freqs = f.fftfreq(f.fftfreq > 200 & f.fftfreq < 650);
+        ff.data = f.fftdata(f.fftfreq > 200 & f.fftfreq < 650);
 
         figure(2); clf; plot(ff.freqs, ff.data, 'k');
-        hold on; text(freqRange(1)+40,300, [num2str(length(userFreqs)), ' Start'], 'FontSize', 24);
+        hold on; text(freqRange(1)+10, 0, [num2str(length(userFreqs)), ' Start'], 'FontSize', 24);
 
         [userNewFreqs, ~] = ginput(length(userFreqs));
     else
@@ -137,6 +136,7 @@ if length(unique(pf(:,1))) < length(userFreqs)
         userNewFreqs = userFreqs;
     end
 
+    % Cycle forward from the start...
     for j=curIDX
         curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
         [pf(:,j), pa(:,j)]= getpeaks(data(curWindowIDX), Fs, userNewFreqs);
@@ -162,15 +162,17 @@ if length(unique(pf(:,end))) < length(userFreqs)
         end
         rucIDX(end+1) = rucIDX(end) - 1;
     end
+
     rucIDX = rucIDX(rucIDX >= 1);
 
+    % Do we need clicks from the user or not?
     if isempty(prefreqs)
         f = fftMaker(data(widxs(end)-(nFFT/2):widxs(end)+(nFFT/2)), Fs, 3);
-        ff.freqs = f.fftfreq(f.fftfreq > 250 & f.fftfreq < 650);
-        ff.data = f.fftdata(f.fftfreq > 250 & f.fftfreq < 650);
+        ff.freqs = f.fftfreq(f.fftfreq > 200 & f.fftfreq < 650);
+        ff.data = f.fftdata(f.fftfreq > 200 & f.fftfreq < 650);
 
         figure(2); clf; plot(ff.freqs, ff.data, 'k');
-        hold on; text(freqRange(1)+20,0, [num2str(length(userFreqs)), ' End'], 'FontSize', 24);
+        hold on; text(freqRange(1)+10,0, [num2str(length(userFreqs)), ' End'], 'FontSize', 24);
 
         [userNewFreqs, ~] = ginput(length(userFreqs));
     else
@@ -178,6 +180,7 @@ if length(unique(pf(:,end))) < length(userFreqs)
         userNewFreqs = userFreqs;
     end
 
+    % Cycle backward from the end...
     for j=rucIDX
            curWindowIDX = widxs(j)-(nFFT/2):widxs(j)+(nFFT/2);
            [pf(:,j), pa(:,j)] = getpeaks(data(curWindowIDX), Fs, userNewFreqs);
@@ -197,11 +200,9 @@ for j=1:length(userFreqs)
 
 end
 
-ylim([min(pf(1,:))-20, max(pf(end,:))+20]);
+%ylim([min(pf(1,:))-20, max(pf(end,:))+20]);
+ylim(freqRange);
 
-% Fix #3 - The two previous fixes don't solve crossovers that occur in the middle
-% of the recording.  Here the user clicks the location, then the EOD frequencies,
-% and the code retraces.  Then we have to align the indices. 
 
 end
 
@@ -209,41 +210,67 @@ end
  
 function [peakfreqs, peakamps] = getpeaks(snip, samplerate, prefreqs)
 
-    m = fftMaker(snip, samplerate, 3);
-    m.fftdata = diff(m.fftdata); m.fftdata(end+1) = m.fftdata(end);        %%% DIFF version
-    frango = 1;
-    
+% Interference frequencies to down-weight during tracking.
+% When the tracked fundamental is within ±2 Hz of a fundInterfFreqs entry,
+% the fundamental weight is reduced (from 1x down to 0.1x at exact match).
+% When 2x the tracked fundamental is within ±2 Hz of a harmInterfFreqs entry,
+% the harmonic weight is reduced (from 2x down to 0.5x at exact match).
+
+interfFreqsFund = [300, 420, 540];   % Hz - interference at fundamental frequencies
+interfFreqsHarm = [660, 780, 900];   % Hz - interference at harmonic frequencies
+
+frango = 1;       % ±Hz window for finding the peak amplitude for tracking
+interfRange = 2;  % ±Hz window over which weights are reduced
+
+    m = fftMaker(snip, samplerate, 3); % This calculates the local FFT
+
     for j=length(prefreqs):-1:1
 
         % Fundamental: search ±1 Hz around previous estimate
-        f1idx = m.fftfreq > prefreqs(j)-frango & m.fftfreq < prefreqs(j)+frango;
+        fundamentalIDX = m.fftfreq > prefreqs(j)-frango & m.fftfreq < prefreqs(j)+frango;
 
-        % [a1, i1] = max(m.fftdata(f1idx));
+            [maxFunAmp, maxFunIDX] = max(detrend(m.fftdata(fundamentalIDX)));
+            f1freqs = m.fftfreq(fundamentalIDX);
+            maxFunFreq = f1freqs(maxFunIDX);
 
-    [a1, i1] = min(m.fftdata(f1idx));   %%% DIFF version
+        % Weight of fundamental: if prefreqs(j) is near a known
+        % interference frequency, reduce role of fundamental tracker. 
+        % Multiplier scales linearly from
+        % 0.1 (exact match) to 1.0 (±interfRange Hz away).
+        fundDist = min(abs(prefreqs(j) - interfFreqsFund));
+        if fundDist < interfRange
+            fundMult = 0.3 + 0.9 * (fundDist / interfRange);
+        else
+            fundMult = 1.0;
+        end
 
-        f1freqs = m.fftfreq(f1idx);
-        f1 = f1freqs(i1);
+        maxFunAmpAdjusted = maxFunAmp * fundMult;
 
         % 1st harmonic: search ±2 Hz around 2x previous estimate (window
         % doubled because absolute drift is twice as large at the harmonic)
-        h1idx = m.fftfreq > 2*prefreqs(j) - (2*frango) & m.fftfreq < 2*prefreqs(j) + (2*frango);
+        harmonicIDX = m.fftfreq > 2*prefreqs(j) - (2*frango) & m.fftfreq < 2*prefreqs(j) + (2*frango);
 
-        if any(h1idx)
-           % [a2, i2] = max(m.fftdata(h1idx));
+           [maxHarmAmp, maxHarmIDX] = max(detrend(m.fftdata(harmonicIDX)));
 
-     [a2, i2] = min(m.fftdata(h1idx));  %%% DIFF version
-     
-            a2 = a2 * 2; % Doubling the amplitude of the harmonic to make it carry more weight.
+            % Weight reduction for harmonic: if 2*prefreqs(j) is near a known
+            % interference frequency, reduce the harmonic multiplier from 2x
+            % down to 0.2x (1/10th of 2). Scales linearly with distance.
+            harmDist = min(abs(2*prefreqs(j) - interfFreqsHarm));
+            if harmDist < interfRange
+                harmMult = 2 * (0.3 + 0.9 * (harmDist / interfRange));
+            else
+                harmMult = 2.0;
+            end
 
-            h1freqs = m.fftfreq(h1idx);
-            f2 = h1freqs(i2) / 2;   % convert harmonic peak back to fundamental
-            peakfreqs(j) = (f1*a1 + f2*a2) / (a1 + a2);  % amplitude-weighted mean
-        else
-            peakfreqs(j) = f1;       % harmonic out of range, use fundamental only
-        end
+            maxHarmAmp = maxHarmAmp * harmMult; % Weighted harmonic amplitude (normally 2x fundamental weight)
 
-        peakamps(j) = a1;            % report fundamental amplitude
+            h1freqs = m.fftfreq(harmonicIDX);
+            maxHarmFreq = h1freqs(maxHarmIDX) / 2;   % convert harmonic peak back to fundamental
+
+            % FINALLY - get the Peak Freq at this time step!!!
+            peakfreqs(j) = (maxFunFreq*maxFunAmpAdjusted + maxHarmFreq*maxHarmAmp) / (maxFunAmpAdjusted + maxHarmAmp);  % amplitude-weighted mean
+
+            peakamps(j) = maxFunAmp;            % report fundamental amplitude
 
     end
 
